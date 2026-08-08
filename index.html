@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>コラージュ作成</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --ig-gradient: linear-gradient(135deg, #4f5bd5 0%, #962fbf 28%, #d62976 55%, #fa7e1e 78%, #feda75 100%);
+    --ig-pink: #d62976;
+    --ig-purple: #962fbf;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--ig-gradient);
+    background-attachment: fixed;
+    color: #262626;
+    min-height: 100vh;
+    padding: 28px 12px 40px;
+  }
+  .app {
+    max-width: 470px;
+    margin: 0 auto;
+    background: #ffffff;
+    min-height: 0;
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(60, 20, 60, 0.28);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  header h1 {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+    background: var(--ig-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .save-btn {
+    background: var(--ig-gradient);
+    color: #fff;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 8px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(214, 41, 118, 0.35);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .save-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(214, 41, 118, 0.45); }
+  .save-btn:disabled { background: #e7e7e7; color: #b6b6b6; box-shadow: none; cursor: default; transform: none; }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 18px;
+    border-bottom: 1px solid #f5f5f5;
+    flex-wrap: wrap;
+  }
+  .ratio-group {
+    display: flex;
+    background: #faf7fb;
+    border: 1px solid #ecdff0;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .ratio-btn {
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    color: #8e8e8e;
+    padding: 7px 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .ratio-btn.active { background: var(--ig-gradient); color: #fff; }
+
+  .add-btn {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #fff;
+    border: 1px solid #ecdff0;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ig-purple);
+    padding: 7px 14px;
+    cursor: pointer;
+  }
+  .add-btn:hover { background: #faf5fc; }
+  .add-btn:disabled { color: #c7c7c7; border-color: #eee; cursor: default; }
+
+  .layout-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    overflow-x: auto;
+    border-bottom: 1px solid #f5f5f5;
+  }
+  .layout-bar::-webkit-scrollbar { display: none; }
+  .layout-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #b3b3b3;
+    flex-shrink: 0;
+  }
+  .layout-btn {
+    flex-shrink: 0;
+    background: #fff;
+    border: 1px solid #ececec;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #555;
+    padding: 6px 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .layout-btn.active {
+    background: var(--ig-gradient);
+    color: #fff;
+    border-color: transparent;
+  }
+
+  .stage-wrap {
+    padding: 20px 16px 0;
+    display: flex;
+    justify-content: center;
+  }
+  .stage-outer { width: 100%; max-width: 400px; }
+  #collage {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #faf7fb;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: aspect-ratio 0.2s ease;
+    border-radius: 10px;
+  }
+  #collage.ratio-45 { aspect-ratio: 4 / 5; }
+
+  .row { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; }
+  .col { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; }
+  .cell {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: #efefef;
+    cursor: grab;
+  }
+  .cell:active { cursor: grabbing; }
+  .cell.selected { box-shadow: inset 0 0 0 3px var(--ig-pink); z-index: 2; }
+  .cell.drag-over { box-shadow: inset 0 0 0 2px var(--ig-purple); }
+  .cell img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    transform-origin: center center;
+    user-select: none;
+  }
+  .cell .remove-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    border: none;
+    font-size: 12px;
+    line-height: 20px;
+    text-align: center;
+    cursor: pointer;
+    z-index: 3;
+  }
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    height: 100%;
+    color: #8e8e8e;
+    padding: 24px;
+    text-align: center;
+  }
+  .empty-state .icon-circle {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--ig-gradient);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .empty-state .icon-circle svg { width: 30px; height: 30px; }
+  .empty-state p { font-size: 15px; color: #262626; font-weight: 600; }
+  .empty-state span { font-size: 13px; color: #8e8e8e; }
+  .empty-state button {
+    margin-top: 4px;
+    background: var(--ig-gradient);
+    color: #fff;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 8px 22px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .hint {
+    text-align: center;
+    font-size: 12px;
+    color: #b3b3b3;
+    padding: 10px 16px 0;
+  }
+
+  .panel {
+    margin: 18px 16px 0;
+    padding: 16px;
+    background: rgba(250, 247, 251, 0.9);
+    border: 1px solid #f0e4f3;
+    border-radius: 16px;
+  }
+  .panel-empty {
+    margin: 18px 16px 0;
+    padding: 20px 16px;
+    text-align: center;
+    font-size: 13px;
+    color: #c7c7c7;
+    border: 1px dashed #ececec;
+    border-radius: 16px;
+  }
+  .panel-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #262626;
+    margin-bottom: 12px;
+  }
+  .zoom-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .zoom-row svg { flex-shrink: 0; color: #b28ac0; }
+  input[type="range"] {
+    -webkit-appearance: none;
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: #ecdff0;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: var(--ig-gradient);
+    cursor: pointer;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #ecdff0;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: var(--ig-purple);
+    cursor: pointer;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #ecdff0;
+  }
+  .nudge-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 36px);
+    grid-template-rows: repeat(3, 36px);
+    gap: 4px;
+    justify-content: center;
+  }
+  .nudge-btn {
+    background: #fff;
+    border: 1px solid #ecdff0;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--ig-purple);
+  }
+  .nudge-btn:hover { background: #faf0f6; }
+  .nudge-btn:active { background: #f5e2ee; }
+  .nudge-btn.center { background: transparent; border: none; cursor: default; }
+  .nudge-btn.center:hover { background: transparent; }
+
+  #file-input { display: none; }
+  .footer-note { text-align: center; font-size: 12px; color: rgba(255,255,255,0.85); padding: 16px 16px 4px; }
+
+  .save-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 24px;
+  }
+  .save-modal-overlay.open { display: flex; }
+  .save-modal {
+    background: #fff;
+    border-radius: 20px;
+    padding: 18px;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+  }
+  .save-modal img {
+    width: 100%;
+    border-radius: 12px;
+    display: block;
+    margin-bottom: 14px;
+    -webkit-touch-callout: default;
+  }
+  .save-modal p {
+    font-size: 13.5px;
+    color: #555;
+    margin-bottom: 14px;
+    line-height: 1.5;
+  }
+  .save-modal .modal-actions { display: flex; gap: 8px; }
+  .save-modal .modal-actions a,
+  .save-modal .modal-actions button {
+    flex: 1;
+    display: inline-block;
+    text-decoration: none;
+    padding: 10px 0;
+    border-radius: 999px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+  }
+  .save-modal .dl-link { background: var(--ig-gradient); color: #fff; }
+  .save-modal .close-link { background: #f0f0f0; color: #444; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>コラージュ作成</h1>
+    <button class="save-btn" id="saveBtn" disabled>画像として保存</button>
+  </header>
+
+  <div class="toolbar">
+    <div class="ratio-group">
+      <button class="ratio-btn" data-ratio="11">正方形 1:1</button>
+      <button class="ratio-btn active" data-ratio="45">縦長 4:5</button>
+    </div>
+    <input type="file" id="file-input" accept="image/*" multiple>
+    <button class="add-btn" id="addBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      写真を追加
+    </button>
+  </div>
+
+  <div class="layout-bar" id="layoutBar" style="display:none;"></div>
+
+  <div class="stage-wrap">
+    <div class="stage-outer"><div id="collage" class="ratio-45"></div></div>
+  </div>
+  <p class="hint" id="hint">写真をドラッグして枠同士を入れ替えられます</p>
+
+  <div id="panelArea"></div>
+</div>
+<p class="footer-note">最大10枚まで追加できます</p>
+
+<div class="save-modal-overlay" id="saveModalOverlay">
+  <div class="save-modal">
+    <img id="saveModalImg" alt="コラージュ画像">
+    <p>画像を長押しして「写真に追加」を選ぶと、iPhoneの写真アプリに保存できます。</p>
+    <div class="modal-actions">
+      <a class="dl-link" id="saveModalDownload" download="collage.png">ダウンロード</a>
+      <button class="close-link" id="saveModalClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var photos = [];
+  var ratio = "45";
+  var selectedIndex = null;
+  var dragSrcIndex = null;
+  var MAX_PHOTOS = 10;
+  var layoutSelection = {};
+
+  var LAYOUTS = {
+    1: [ {id:'full', label:'フル', type:'rows', counts:[1]} ],
+    2: [
+      {id:'lr', label:'左右2分割', type:'rows', counts:[2]},
+      {id:'tb', label:'上下2分割', type:'rows', counts:[1,1]}
+    ],
+    3: [
+      {id:'v3', label:'縦3分割', type:'rows', counts:[1,1,1]},
+      {id:'h3', label:'横3分割', type:'rows', counts:[3]},
+      {id:'bigL', label:'左大+右2枚', type:'cols', counts:[1,2], weights:[1.4,1]},
+      {id:'bigT', label:'上大+下2枚', type:'rows', counts:[1,2], weights:[1.4,1]}
+    ],
+    4: [
+      {id:'2x2', label:'田の字(2×2)', type:'rows', counts:[2,2]},
+      {id:'v4', label:'縦4分割', type:'rows', counts:[1,1,1,1]},
+      {id:'h4', label:'横4分割', type:'rows', counts:[4]},
+      {id:'bigL3', label:'左大+右3枚', type:'cols', counts:[1,3], weights:[1.4,1]},
+      {id:'bigT3', label:'上大+下3枚', type:'rows', counts:[1,3], weights:[1.4,1]}
+    ],
+    5: [
+      {id:'r23', label:'2段+3段', type:'rows', counts:[2,3]},
+      {id:'r32', label:'3段+2段', type:'rows', counts:[3,2]},
+      {id:'v5', label:'縦5分割', type:'rows', counts:[1,1,1,1,1]}
+    ],
+    6: [
+      {id:'2x3', label:'2列×3段', type:'rows', counts:[2,2,2]},
+      {id:'3x2', label:'3列×2段', type:'rows', counts:[3,3]},
+      {id:'v6', label:'縦6分割', type:'rows', counts:[1,1,1,1,1,1]}
+    ],
+    7: [
+      {id:'r34', label:'3段+4段', type:'rows', counts:[3,4]},
+      {id:'r43', label:'4段+3段', type:'rows', counts:[4,3]},
+      {id:'r223', label:'2+2+3段', type:'rows', counts:[2,2,3]}
+    ],
+    8: [
+      {id:'4x2', label:'4列×2段', type:'rows', counts:[4,4]},
+      {id:'2x4', label:'2列×4段', type:'rows', counts:[2,2,2,2]},
+      {id:'332', label:'3+3+2段', type:'rows', counts:[3,3,2]}
+    ],
+    9: [
+      {id:'3x3', label:'3列×3段', type:'rows', counts:[3,3,3]},
+      {id:'v9', label:'縦9分割', type:'rows', counts:[1,1,1,1,1,1,1,1,1]}
+    ],
+    10: [
+      {id:'5x2', label:'5列×2段', type:'rows', counts:[5,5]},
+      {id:'2x5', label:'2列×5段', type:'rows', counts:[2,2,2,2,2]},
+      {id:'442', label:'4+4+2段', type:'rows', counts:[4,4,2]}
+    ]
+  };
+
+  var collageEl = document.getElementById('collage');
+  var addBtn = document.getElementById('addBtn');
+  var fileInput = document.getElementById('file-input');
+  var saveBtn = document.getElementById('saveBtn');
+  var panelArea = document.getElementById('panelArea');
+  var hint = document.getElementById('hint');
+  var layoutBar = document.getElementById('layoutBar');
+  var saveModalOverlay = document.getElementById('saveModalOverlay');
+  var saveModalImg = document.getElementById('saveModalImg');
+  var saveModalDownload = document.getElementById('saveModalDownload');
+  var saveModalClose = document.getElementById('saveModalClose');
+
+  saveModalClose.addEventListener('click', function(){
+    saveModalOverlay.classList.remove('open');
+  });
+
+  document.querySelectorAll('.ratio-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.ratio-btn').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      ratio = btn.getAttribute('data-ratio');
+      collageEl.classList.toggle('ratio-45', ratio === '45');
+    });
+  });
+
+  addBtn.addEventListener('click', function(){ fileInput.click(); });
+  fileInput.addEventListener('change', function(e){
+    addFiles(Array.prototype.slice.call(e.target.files));
+    fileInput.value = '';
+  });
+
+  function addFiles(files){
+    var room = MAX_PHOTOS - photos.length;
+    if (room <= 0) { alert('写真は最大10枚までです'); return; }
+    var toAdd = files.slice(0, room);
+    if (files.length > room) alert('最大10枚までのため、' + toAdd.length + '枚のみ追加しました');
+    toAdd.forEach(function(file){
+      var reader = new FileReader();
+      reader.onload = function(ev){
+        photos.push({ src: ev.target.result, scale: 1, x: 0, y: 0 });
+        render();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function getLayoutOptions(n){ return LAYOUTS[Math.min(Math.max(n,1),10)] || []; }
+
+  function getSelectedLayout(n){
+    var opts = getLayoutOptions(n);
+    if (!opts.length) return null;
+    var sel = layoutSelection[n];
+    var found = null;
+    for (var i=0;i<opts.length;i++){ if (opts[i].id === sel) { found = opts[i]; break; } }
+    if (!found) { found = opts[0]; layoutSelection[n] = found.id; }
+    return found;
+  }
+
+  function renderLayoutBar(n){
+    layoutBar.innerHTML = '';
+    if (n === 0) { layoutBar.style.display = 'none'; return; }
+    var opts = getLayoutOptions(n);
+    layoutBar.style.display = 'flex';
+    var label = document.createElement('span');
+    label.className = 'layout-label';
+    label.textContent = '配置:';
+    layoutBar.appendChild(label);
+    var current = getSelectedLayout(n);
+    opts.forEach(function(opt){
+      var btn = document.createElement('button');
+      btn.className = 'layout-btn' + (opt.id === current.id ? ' active' : '');
+      btn.textContent = opt.label;
+      btn.addEventListener('click', function(){
+        layoutSelection[n] = opt.id;
+        render();
+      });
+      layoutBar.appendChild(btn);
+    });
+  }
+
+  function render(){
+    var n = photos.length;
+    saveBtn.disabled = n === 0;
+    addBtn.disabled = n >= MAX_PHOTOS;
+    collageEl.innerHTML = '';
+    renderLayoutBar(n);
+
+    if (n === 0){
+      collageEl.style.flexDirection = 'column';
+      hint.style.display = 'none';
+      var empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.innerHTML =
+        '<div class="icon-circle"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 15l-5-5-4 4-3-3-6 6"/></svg></div>' +
+        '<p>写真を追加してコラージュを作成</p>' +
+        '<span>最大10枚までアップロードできます</span>' +
+        '<button id="emptyAddBtn">写真を選択</button>';
+      collageEl.appendChild(empty);
+      document.getElementById('emptyAddBtn').addEventListener('click', function(){ fileInput.click(); });
+      renderPanel();
+      return;
+    }
+
+    hint.style.display = 'block';
+    var layout = getSelectedLayout(n);
+    renderBands(n, layout);
+    renderPanel();
+  }
+
+  function renderBands(n, layout){
+    collageEl.style.flexDirection = (layout.type === 'cols') ? 'row' : 'column';
+    var idx = 0;
+    layout.counts.forEach(function(count, i){
+      var band = document.createElement('div');
+      band.className = (layout.type === 'cols') ? 'col' : 'row';
+      if (layout.weights && layout.weights[i]) {
+        var w = layout.weights[i];
+        band.style.flex = w + ' ' + w + ' 0%';
+      }
+      for (var j = 0; j < count; j++){
+        band.appendChild(buildCell(idx));
+        idx++;
+      }
+      collageEl.appendChild(band);
+    });
+  }
+
+  function buildCell(index){
+    var photo = photos[index];
+    var cell = document.createElement('div');
+    cell.className = 'cell' + (selectedIndex === index ? ' selected' : '');
+    cell.setAttribute('draggable', 'true');
+    cell.dataset.index = index;
+
+    var img = document.createElement('img');
+    img.src = photo.src;
+    img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ') translate(' + photo.x + '%, ' + photo.y + '%)';
+    cell.appendChild(img);
+
+    var removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-btn';
+    removeBtn.innerHTML = '&times;';
+    removeBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      photos.splice(index, 1);
+      if (selectedIndex === index) selectedIndex = null;
+      else if (selectedIndex !== null && selectedIndex > index) selectedIndex--;
+      render();
+    });
+    cell.appendChild(removeBtn);
+
+    cell.addEventListener('click', function(){
+      selectedIndex = (selectedIndex === index) ? null : index;
+      render();
+    });
+
+    cell.addEventListener('dragstart', function(e){
+      dragSrcIndex = index;
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    cell.addEventListener('dragover', function(e){
+      e.preventDefault();
+      cell.classList.add('drag-over');
+    });
+    cell.addEventListener('dragleave', function(){
+      cell.classList.remove('drag-over');
+    });
+    cell.addEventListener('drop', function(e){
+      e.preventDefault();
+      cell.classList.remove('drag-over');
+      if (dragSrcIndex === null || dragSrcIndex === index) return;
+      var tmp = photos[dragSrcIndex];
+      photos[dragSrcIndex] = photos[index];
+      photos[index] = tmp;
+      dragSrcIndex = null;
+      render();
+    });
+
+    var dragging = false;
+    var startPointer = { x: 0, y: 0 };
+    var startOffset = { x: 0, y: 0 };
+
+    img.addEventListener('pointerdown', function(e){
+      e.stopPropagation();
+      dragging = true;
+      selectedIndex = index;
+      startPointer.x = e.clientX;
+      startPointer.y = e.clientY;
+      startOffset.x = photo.x;
+      startOffset.y = photo.y;
+      img.setPointerCapture(e.pointerId);
+    });
+    img.addEventListener('pointermove', function(e){
+      if (!dragging) return;
+      var rect = cell.getBoundingClientRect();
+      var dxPct = ((e.clientX - startPointer.x) / rect.width) * 100;
+      var dyPct = ((e.clientY - startPointer.y) / rect.height) * 100;
+      var maxOff = (photo.scale - 1) * 50;
+      photo.x = clamp(startOffset.x + dxPct, -maxOff, maxOff);
+      photo.y = clamp(startOffset.y + dyPct, -maxOff, maxOff);
+      img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ') translate(' + photo.x + '%, ' + photo.y + '%)';
+    });
+    img.addEventListener('pointerup', function(){
+      dragging = false;
+      render();
+    });
+
+    return cell;
+  }
+
+  function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+  function renderPanel(){
+    panelArea.innerHTML = '';
+    if (selectedIndex === null || !photos[selectedIndex]){
+      if (photos.length){
+        var emptyPanel = document.createElement('div');
+        emptyPanel.className = 'panel-empty';
+        emptyPanel.textContent = '写真をタップすると拡大・位置調整ができます';
+        panelArea.appendChild(emptyPanel);
+      }
+      return;
+    }
+    var photo = photos[selectedIndex];
+    var panel = document.createElement('div');
+    panel.className = 'panel';
+
+    var title = document.createElement('div');
+    title.className = 'panel-title';
+    title.textContent = (selectedIndex + 1) + '枚目の写真を調整';
+    panel.appendChild(title);
+
+    var zoomRow = document.createElement('div');
+    zoomRow.className = 'zoom-row';
+    zoomRow.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+      '<input type="range" id="zoomSlider" min="1" max="3" step="0.01" value="' + photo.scale + '">' +
+      '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+    panel.appendChild(zoomRow);
+
+    var nudgeWrap = document.createElement('div');
+    nudgeWrap.style.display = 'flex';
+    nudgeWrap.style.justifyContent = 'center';
+    var grid = document.createElement('div');
+    grid.className = 'nudge-grid';
+
+    var arrowSVG = function(rot){
+      return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="transform:rotate(' + rot + 'deg)"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="6 11 12 5 18 11"/></svg>';
+    };
+
+    var positions = [
+      null, { dir: 'up', rot: 0 }, null,
+      { dir: 'left', rot: -90 }, 'center', { dir: 'right', rot: 90 },
+      null, { dir: 'down', rot: 180 }, null
+    ];
+
+    positions.forEach(function(p){
+      var btn = document.createElement('div');
+      if (p === null){
+        btn.className = 'nudge-btn';
+        btn.style.visibility = 'hidden';
+      } else if (p === 'center'){
+        btn.className = 'nudge-btn center';
+      } else {
+        btn.className = 'nudge-btn';
+        btn.innerHTML = arrowSVG(p.rot);
+        btn.addEventListener('click', function(){
+          var step = 5;
+          var maxOff = (photo.scale - 1) * 50;
+          if (p.dir === 'up') photo.y = clamp(photo.y - step, -maxOff, maxOff);
+          if (p.dir === 'down') photo.y = clamp(photo.y + step, -maxOff, maxOff);
+          if (p.dir === 'left') photo.x = clamp(photo.x - step, -maxOff, maxOff);
+          if (p.dir === 'right') photo.x = clamp(photo.x + step, -maxOff, maxOff);
+          updateCellTransform(selectedIndex);
+        });
+      }
+      grid.appendChild(btn);
+    });
+    nudgeWrap.appendChild(grid);
+    panel.appendChild(nudgeWrap);
+    panelArea.appendChild(panel);
+
+    document.getElementById('zoomSlider').addEventListener('input', function(e){
+      photo.scale = parseFloat(e.target.value);
+      var maxOff = (photo.scale - 1) * 50;
+      photo.x = clamp(photo.x, -maxOff, maxOff);
+      photo.y = clamp(photo.y, -maxOff, maxOff);
+      updateCellTransform(selectedIndex);
+    });
+  }
+
+  function updateCellTransform(index){
+    var cell = collageEl.querySelector('.cell[data-index="' + index + '"]');
+    if (!cell) return;
+    var img = cell.querySelector('img');
+    var photo = photos[index];
+    img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ') translate(' + photo.x + '%, ' + photo.y + '%)';
+  }
+
+  saveBtn.addEventListener('click', function(){
+    if (photos.length === 0) return;
+    var prevSelected = selectedIndex;
+    selectedIndex = null;
+    render();
+    saveBtn.disabled = true;
+    saveBtn.textContent = '保存中...';
+    setTimeout(function(){
+      html2canvas(collageEl, { useCORS: true, scale: 3, backgroundColor: '#ffffff' }).then(function(canvas){
+        canvas.toBlob(function(blob){
+          finishSave(blob, canvas);
+        }, 'image/png');
+      });
+    }, 50);
+
+    function finishSave(blob, canvas){
+      var restoreBtn = function(){
+        saveBtn.disabled = false;
+        saveBtn.textContent = '画像として保存';
+        selectedIndex = prevSelected;
+        render();
+      };
+
+      var file = null;
+      try { file = new File([blob], 'collage.png', { type: 'image/png' }); } catch (e) {}
+
+      if (navigator.canShare && file && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'コラージュ' })
+          .then(restoreBtn)
+          .catch(function(){
+            // 共有をキャンセルした場合などは長押し保存モーダルを表示
+            openSaveModal(canvas);
+            restoreBtn();
+          });
+      } else {
+        openSaveModal(canvas);
+        restoreBtn();
+      }
+    }
+
+    function openSaveModal(canvas){
+      var dataUrl = canvas.toDataURL('image/png');
+      saveModalImg.src = dataUrl;
+      saveModalDownload.href = dataUrl;
+      saveModalOverlay.classList.add('open');
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
