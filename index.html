@@ -185,9 +185,24 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    pointer-events: none;
+    pointer-events: auto;
+    touch-action: none;
     transform-origin: center center;
     user-select: none;
+    -webkit-user-drag: none;
+  }
+  .cell.swap-source { opacity: 0.35; }
+  .drag-ghost {
+    position: fixed;
+    top: 0;
+    left: 0;
+    object-fit: cover;
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: 50;
+    opacity: 0.9;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    transform: translate(-50%, -50%) scale(1.06);
   }
   .cell .remove-btn {
     position: absolute;
@@ -396,7 +411,7 @@
   <div class="stage-wrap">
     <div class="stage-outer"><div id="collage" class="ratio-45"></div></div>
   </div>
-  <p class="hint" id="hint">写真をドラッグして枠同士を入れ替えられます</p>
+  <p class="hint" id="hint">写真を長押ししてドラッグすると枠を入れ替えられます</p>
 
   <div id="panelArea"></div>
 </div>
@@ -418,7 +433,6 @@
   var photos = [];
   var ratio = "45";
   var selectedIndex = null;
-  var dragSrcIndex = null;
   var MAX_PHOTOS = 10;
   var layoutSelection = {};
 
@@ -603,7 +617,6 @@
     var photo = photos[index];
     var cell = document.createElement('div');
     cell.className = 'cell' + (selectedIndex === index ? ' selected' : '');
-    cell.setAttribute('draggable', 'true');
     cell.dataset.index = index;
 
     var img = document.createElement('img');
@@ -624,60 +637,128 @@
     cell.appendChild(removeBtn);
 
     cell.addEventListener('click', function(){
+      if (suppressClick) { suppressClick = false; return; }
       selectedIndex = (selectedIndex === index) ? null : index;
       render();
     });
 
-    cell.addEventListener('dragstart', function(e){
-      dragSrcIndex = index;
-      e.dataTransfer.effectAllowed = 'move';
-    });
-    cell.addEventListener('dragover', function(e){
-      e.preventDefault();
-      cell.classList.add('drag-over');
-    });
-    cell.addEventListener('dragleave', function(){
-      cell.classList.remove('drag-over');
-    });
-    cell.addEventListener('drop', function(e){
-      e.preventDefault();
-      cell.classList.remove('drag-over');
-      if (dragSrcIndex === null || dragSrcIndex === index) return;
-      var tmp = photos[dragSrcIndex];
-      photos[dragSrcIndex] = photos[index];
-      photos[index] = tmp;
-      dragSrcIndex = null;
-      render();
-    });
-
-    var dragging = false;
+    // --- Unified pointer-based interaction: short drag = reposition photo,
+    //     long-press then drag = swap this cell with another one. Works for
+    //     touch, mouse and pen alike (native HTML5 drag&drop is unreliable on iOS). ---
+    var mode = null; // 'pan' | 'swap'
+    var suppressClick = false;
+    var longPressTimer = null;
     var startPointer = { x: 0, y: 0 };
     var startOffset = { x: 0, y: 0 };
+    var ghost = null;
+    var dropTargetCell = null;
+    var MOVE_THRESHOLD = 6;
+    var LONG_PRESS_MS = 280;
+
+    function clearAllDragOver(){
+      collageEl.querySelectorAll('.cell.drag-over').forEach(function(c){ c.classList.remove('drag-over'); });
+    }
+
+    function startSwap(e){
+      mode = 'swap';
+      suppressClick = true;
+      cell.classList.add('swap-source');
+      ghost = document.createElement('img');
+      ghost.src = photo.src;
+      ghost.className = 'drag-ghost';
+      var rect = cell.getBoundingClientRect();
+      ghost.style.width = rect.width + 'px';
+      ghost.style.height = rect.height + 'px';
+      positionGhost(e.clientX, e.clientY);
+      document.body.appendChild(ghost);
+    }
+
+    function positionGhost(clientX, clientY){
+      if (!ghost) return;
+      ghost.style.left = clientX + 'px';
+      ghost.style.top = clientY + 'px';
+    }
+
+    function updateSwap(e){
+      positionGhost(e.clientX, e.clientY);
+      ghost.style.display = 'none';
+      var elAt = document.elementFromPoint(e.clientX, e.clientY);
+      ghost.style.display = '';
+      var targetCell = elAt ? elAt.closest('.cell') : null;
+      if (targetCell !== dropTargetCell){
+        clearAllDragOver();
+        dropTargetCell = targetCell;
+        if (dropTargetCell && dropTargetCell !== cell) dropTargetCell.classList.add('drag-over');
+      }
+    }
+
+    function finishSwap(){
+      cell.classList.remove('swap-source');
+      clearAllDragOver();
+      if (ghost) { ghost.remove(); ghost = null; }
+      if (dropTargetCell && dropTargetCell !== cell){
+        var targetIndex = parseInt(dropTargetCell.dataset.index, 10);
+        var tmp = photos[targetIndex];
+        photos[targetIndex] = photos[index];
+        photos[index] = tmp;
+      }
+      dropTargetCell = null;
+      render();
+    }
 
     img.addEventListener('pointerdown', function(e){
       e.stopPropagation();
-      dragging = true;
-      selectedIndex = index;
+      mode = null;
+      suppressClick = false;
       startPointer.x = e.clientX;
       startPointer.y = e.clientY;
       startOffset.x = photo.x;
       startOffset.y = photo.y;
       img.setPointerCapture(e.pointerId);
+      longPressTimer = setTimeout(function(){
+        if (mode === null) startSwap(e);
+      }, LONG_PRESS_MS);
     });
+
     img.addEventListener('pointermove', function(e){
-      if (!dragging) return;
-      var rect = cell.getBoundingClientRect();
-      var dxPct = ((e.clientX - startPointer.x) / rect.width) * 100;
-      var dyPct = ((e.clientY - startPointer.y) / rect.height) * 100;
-      var maxOff = (photo.scale - 1) * 50;
-      photo.x = clamp(startOffset.x + dxPct, -maxOff, maxOff);
-      photo.y = clamp(startOffset.y + dyPct, -maxOff, maxOff);
-      img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ') translate(' + photo.x + '%, ' + photo.y + '%)';
+      if (mode === 'swap'){
+        updateSwap(e);
+        return;
+      }
+      var dx = e.clientX - startPointer.x;
+      var dy = e.clientY - startPointer.y;
+      if (mode === null){
+        if (Math.abs(dx) > MOVE_THRESHOLD || Math.abs(dy) > MOVE_THRESHOLD){
+          clearTimeout(longPressTimer);
+          mode = 'pan';
+          selectedIndex = index;
+        } else {
+          return;
+        }
+      }
+      if (mode === 'pan'){
+        var rect = cell.getBoundingClientRect();
+        var dxPct = (dx / rect.width) * 100;
+        var dyPct = (dy / rect.height) * 100;
+        var maxOff = (photo.scale - 1) * 50;
+        photo.x = clamp(startOffset.x + dxPct, -maxOff, maxOff);
+        photo.y = clamp(startOffset.y + dyPct, -maxOff, maxOff);
+        img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ') translate(' + photo.x + '%, ' + photo.y + '%)';
+      }
     });
-    img.addEventListener('pointerup', function(){
-      dragging = false;
-      render();
-    });
+
+    function endInteraction(){
+      clearTimeout(longPressTimer);
+      if (mode === 'swap'){
+        finishSwap();
+      } else if (mode === 'pan'){
+        render();
+      }
+      mode = null;
+    }
+
+    img.addEventListener('pointerup', endInteraction);
+    img.addEventListener('pointercancel', endInteraction);
 
     return cell;
   }
