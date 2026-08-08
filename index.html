@@ -189,7 +189,9 @@
     touch-action: none;
     transform-origin: center center;
     user-select: none;
+    -webkit-user-select: none;
     -webkit-user-drag: none;
+    -webkit-touch-callout: none;
   }
   .cell.swap-source { opacity: 0.35; }
   .drag-ghost {
@@ -705,6 +707,8 @@
       dropTargetCell = null;
       render();
     }
+
+    img.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 
     img.addEventListener('pointerdown', function(e){
       e.stopPropagation();
