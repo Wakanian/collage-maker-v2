@@ -222,6 +222,7 @@
     cursor: pointer;
     z-index: 3;
   }
+  #collage.capturing .remove-btn { display: none; }
   .empty-state {
     display: flex;
     flex-direction: column;
@@ -864,7 +865,9 @@
     saveBtn.disabled = true;
     saveBtn.textContent = '保存中...';
     setTimeout(function(){
+      collageEl.classList.add('capturing');
       html2canvas(collageEl, { useCORS: true, scale: 3, backgroundColor: '#ffffff' }).then(function(canvas){
+        collageEl.classList.remove('capturing');
         canvas.toBlob(function(blob){
           finishSave(blob, canvas);
         }, 'image/png');
