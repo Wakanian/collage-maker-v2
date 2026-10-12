@@ -178,16 +178,12 @@
   .cell:active { cursor: grabbing; }
   .cell.selected { box-shadow: inset 0 0 0 3px var(--ig-pink); z-index: 2; }
   .cell.drag-over { box-shadow: inset 0 0 0 2px var(--ig-purple); }
-  .cell img {
+  .cell .photo-layer {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+    inset: 0;
+    background-repeat: no-repeat;
     pointer-events: auto;
     touch-action: none;
-    transform-origin: center center;
     user-select: none;
     -webkit-user-select: none;
     -webkit-user-drag: none;
@@ -528,8 +524,21 @@
     toAdd.forEach(function(file){
       var reader = new FileReader();
       reader.onload = function(ev){
-        photos.push({ src: ev.target.result, scale: 1, x: 0, y: 0 });
-        render();
+        var src = ev.target.result;
+        // We need the photo's real pixel dimensions up front so the
+        // "cover" crop can be replicated exactly with background-size
+        // (html2canvas doesn't reliably support the object-fit CSS property).
+        var probe = new Image();
+        probe.onload = function(){
+          photos.push({
+            src: src,
+            scale: 1, x: 0, y: 0,
+            naturalW: probe.naturalWidth,
+            naturalH: probe.naturalHeight
+          });
+          render();
+        };
+        probe.src = src;
       };
       reader.readAsDataURL(file);
     });
@@ -623,10 +632,10 @@
     cell.className = 'cell' + (selectedIndex === index ? ' selected' : '');
     cell.dataset.index = index;
 
-    var img = document.createElement('img');
-    img.src = photo.src;
-    img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ')';
-    cell.appendChild(img);
+    var layer = document.createElement('div');
+    layer.className = 'photo-layer';
+    layer.style.backgroundImage = 'url(' + photo.src + ')';
+    cell.appendChild(layer);
 
     var removeBtn = document.createElement('button');
     removeBtn.className = 'remove-btn';
@@ -710,9 +719,9 @@
       render();
     }
 
-    img.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    layer.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 
-    img.addEventListener('pointerdown', function(e){
+    layer.addEventListener('pointerdown', function(e){
       e.stopPropagation();
       mode = null;
       suppressClick = false;
@@ -720,13 +729,13 @@
       startPointer.y = e.clientY;
       startOffset.x = photo.x;
       startOffset.y = photo.y;
-      img.setPointerCapture(e.pointerId);
+      layer.setPointerCapture(e.pointerId);
       longPressTimer = setTimeout(function(){
         if (mode === null) startSwap(e);
       }, LONG_PRESS_MS);
     });
 
-    img.addEventListener('pointermove', function(e){
+    layer.addEventListener('pointermove', function(e){
       if (mode === 'swap'){
         updateSwap(e);
         return;
@@ -749,7 +758,7 @@
         var maxOff = (photo.scale - 1) * 50;
         photo.x = clamp(startOffset.x + dxPct, -maxOff, maxOff);
         photo.y = clamp(startOffset.y + dyPct, -maxOff, maxOff);
-        applyPhotoTransform(img, rect, photo);
+        applyPhotoTransform(layer, rect, photo);
       }
     });
 
@@ -763,32 +772,46 @@
       mode = null;
     }
 
-    img.addEventListener('pointerup', endInteraction);
-    img.addEventListener('pointercancel', endInteraction);
+    layer.addEventListener('pointerup', endInteraction);
+    layer.addEventListener('pointercancel', endInteraction);
 
     return cell;
   }
 
   function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
 
-  // html2canvas doesn't reliably resolve percentage-based transform values,
-  // so the on-screen preview and the saved image could drift apart. We keep
-  // photo.x / photo.y as percentages (they're resolution-independent and make
-  // the clamping math simple), but always convert to actual pixels — based on
-  // the cell's real rendered size — right before writing them to the DOM.
-  function applyPhotoTransform(img, rect, photo){
-    var txPx = (photo.x / 100) * rect.width;
-    var tyPx = (photo.y / 100) * rect.height;
-    img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ') translate(' + txPx + 'px, ' + tyPx + 'px)';
+  // html2canvas reliably supports neither percentage transform values NOR the
+  // object-fit CSS property, so the on-screen preview and the saved PNG could
+  // drift apart on both counts. To sidestep both limitations at once, each
+  // photo is drawn as a background-image, and we replicate "object-fit: cover"
+  // plus the zoom/pan ourselves in plain pixels, based on the cell's real
+  // rendered size and the photo's real natural dimensions.
+  function applyPhotoTransform(layer, rect, photo){
+    var cellW = rect.width, cellH = rect.height;
+    var naturalW = photo.naturalW || cellW;
+    var naturalH = photo.naturalH || cellH;
+    var imgRatio = naturalW / naturalH;
+    var cellRatio = cellW / cellH;
+    var baseW, baseH;
+    if (imgRatio > cellRatio) { baseH = cellH; baseW = cellH * imgRatio; }
+    else { baseW = cellW; baseH = cellW / imgRatio; }
+    var w = baseW * photo.scale;
+    var h = baseH * photo.scale;
+    var offsetXpx = (photo.x / 100) * cellW;
+    var offsetYpx = (photo.y / 100) * cellH;
+    var posX = (cellW - w) / 2 + offsetXpx;
+    var posY = (cellH - h) / 2 + offsetYpx;
+    layer.style.backgroundSize = w + 'px ' + h + 'px';
+    layer.style.backgroundPosition = posX + 'px ' + posY + 'px';
   }
 
   function syncAllTransforms(){
     collageEl.querySelectorAll('.cell').forEach(function(cellEl){
       var i = parseInt(cellEl.dataset.index, 10);
       var photo = photos[i];
-      var img = cellEl.querySelector('img');
-      if (!photo || !img) return;
-      applyPhotoTransform(img, cellEl.getBoundingClientRect(), photo);
+      var layer = cellEl.querySelector('.photo-layer');
+      if (!photo || !layer) return;
+      applyPhotoTransform(layer, cellEl.getBoundingClientRect(), photo);
     });
   }
 
@@ -874,9 +897,9 @@
   function updateCellTransform(index){
     var cell = collageEl.querySelector('.cell[data-index="' + index + '"]');
     if (!cell) return;
-    var img = cell.querySelector('img');
+    var layer = cell.querySelector('.photo-layer');
     var photo = photos[index];
-    applyPhotoTransform(img, cell.getBoundingClientRect(), photo);
+    applyPhotoTransform(layer, cell.getBoundingClientRect(), photo);
   }
 
   saveBtn.addEventListener('click', function(){
