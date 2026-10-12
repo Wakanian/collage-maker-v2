@@ -595,6 +595,7 @@
     hint.style.display = 'block';
     var layout = getSelectedLayout(n);
     renderBands(n, layout);
+    syncAllTransforms();
     renderPanel();
   }
 
@@ -624,7 +625,7 @@
 
     var img = document.createElement('img');
     img.src = photo.src;
-    img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ') translate(' + photo.x + '%, ' + photo.y + '%)';
+    img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ')';
     cell.appendChild(img);
 
     var removeBtn = document.createElement('button');
@@ -748,7 +749,7 @@
         var maxOff = (photo.scale - 1) * 50;
         photo.x = clamp(startOffset.x + dxPct, -maxOff, maxOff);
         photo.y = clamp(startOffset.y + dyPct, -maxOff, maxOff);
-        img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ') translate(' + photo.x + '%, ' + photo.y + '%)';
+        applyPhotoTransform(img, rect, photo);
       }
     });
 
@@ -769,6 +770,27 @@
   }
 
   function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+  // html2canvas doesn't reliably resolve percentage-based transform values,
+  // so the on-screen preview and the saved image could drift apart. We keep
+  // photo.x / photo.y as percentages (they're resolution-independent and make
+  // the clamping math simple), but always convert to actual pixels — based on
+  // the cell's real rendered size — right before writing them to the DOM.
+  function applyPhotoTransform(img, rect, photo){
+    var txPx = (photo.x / 100) * rect.width;
+    var tyPx = (photo.y / 100) * rect.height;
+    img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ') translate(' + txPx + 'px, ' + tyPx + 'px)';
+  }
+
+  function syncAllTransforms(){
+    collageEl.querySelectorAll('.cell').forEach(function(cellEl){
+      var i = parseInt(cellEl.dataset.index, 10);
+      var photo = photos[i];
+      var img = cellEl.querySelector('img');
+      if (!photo || !img) return;
+      applyPhotoTransform(img, cellEl.getBoundingClientRect(), photo);
+    });
+  }
 
   function renderPanel(){
     panelArea.innerHTML = '';
@@ -854,7 +876,7 @@
     if (!cell) return;
     var img = cell.querySelector('img');
     var photo = photos[index];
-    img.style.transform = 'translate(-50%, -50%) scale(' + photo.scale + ') translate(' + photo.x + '%, ' + photo.y + '%)';
+    applyPhotoTransform(img, cell.getBoundingClientRect(), photo);
   }
 
   saveBtn.addEventListener('click', function(){
